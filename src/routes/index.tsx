@@ -5,6 +5,7 @@ import { unlockAudio } from "@/game/audio";
 import { type GadgetId } from "@/game/gadgets";
 import { Builder } from "@/components/game/Builder";
 import { Duel } from "@/components/game/Duel";
+import { AdBanner } from "@/components/game/AdBanner";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -79,34 +80,39 @@ function Index() {
     }
   };
 
-  if (screen === "duel") {
-    return (
-      <Duel
-        avatar={avatar}
-        level={level}
-        equippedGadgets={equippedGadgets}
-        onExit={() => setScreen("build")}
-        onReward={handleReward}
-      />
-    );
-  }
-
   return (
-    <Builder
-      avatar={avatar}
-      setAvatar={saveAvatar}
-      level={level}
-      setLevel={setLevel}
-      coins={coins}
-      setCoins={saveCoins}
-      purchasedGadgets={purchasedGadgets}
-      setPurchasedGadgets={savePurchased}
-      equippedGadgets={equippedGadgets}
-      setEquippedGadgets={saveEquipped}
-      onDuel={() => {
-        unlockAudio();
-        setScreen("duel");
-      }}
-    />
+    <div className="flex flex-col w-full min-h-screen">
+      <AdBanner />
+      {screen === "duel" ? (
+        <div className="flex-1">
+          <Duel
+            avatar={avatar}
+            level={level}
+            equippedGadgets={equippedGadgets}
+            onExit={() => setScreen("build")}
+            onReward={handleReward}
+          />
+        </div>
+      ) : (
+        <div className="flex-1">
+          <Builder
+            avatar={avatar}
+            setAvatar={saveAvatar}
+            level={level}
+            setLevel={setLevel}
+            coins={coins}
+            setCoins={saveCoins}
+            purchasedGadgets={purchasedGadgets}
+            setPurchasedGadgets={savePurchased}
+            equippedGadgets={equippedGadgets}
+            setEquippedGadgets={saveEquipped}
+            onDuel={() => {
+              unlockAudio();
+              setScreen("duel");
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
