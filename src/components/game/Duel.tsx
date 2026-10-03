@@ -4,6 +4,7 @@ import { pickWord } from "@/game/words";
 import { sfx, voice, START_LINES, WIN_LINES, isMuted, setMuted } from "@/game/audio";
 import { GADGETS, getGadget, mergeEffects, type GadgetId } from "@/game/gadgets";
 import { Fighter } from "./Fighter";
+import { MogCardModal } from "./MogCardModal";
 
 type Phase = "intro" | "stare" | "word" | "clash" | "matchEnd";
 type Who = "p" | "b";
@@ -43,6 +44,7 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
   const [phase, setPhase] = useState<Phase>("intro");
   const [exchange, setExchange] = useState(1);
   const [hp, setHp] = useState({ p: MAX_HP, b: MAX_HP });
+  const [exMeter, setExMeter] = useState({ p: 0, b: 0 }); // 0-100 Mewing Frenzy gauge
   const [playerPose, setPlayerPose] = useState<PoseState>("idle");
   const [botPose, setBotPose] = useState<PoseState>("idle");
 
@@ -60,6 +62,8 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
   const [times, setTimes] = useState<number[]>([]);
   const [floating, setFloating] = useState<FloatingText[]>([]);
   const [isBotStunned, setIsBotStunned] = useState(false);
+  const [totalDamageDealt, setTotalDamageDealt] = useState(0);
+  const [showMogCard, setShowMogCard] = useState(false);
 
   const phaseRef = useRef<Phase>("intro");
   const timers = useRef<number[]>([]);
@@ -68,6 +72,8 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
   const inputRef = useRef<HTMLInputElement>(null);
   const hpRef = useRef(hp);
   hpRef.current = hp;
+  const exRef = useRef(exMeter);
+  exRef.current = exMeter;
   const floatId = useRef(1);
 
   const setP = (p: Phase) => {
@@ -107,6 +113,18 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
       let dmg = 22 + Math.round(word.length * 1.5);
       if (elapsedSec < 1.3) dmg += 6; // Quick speed bonus!
 
+      // EX Meter: Mewing Frenzy super multiplier
+      const isFrenzy = exRef.current[attacker] >= 100;
+      if (isFrenzy) {
+        dmg = Math.round(dmg * 1.45);
+      }
+
+      // Danger Zone / Desperation bonus (< 25 HP)
+      const currentAtkHp = hpRef.current[attacker];
+      if (currentAtkHp < 25) {
+        dmg = Math.round(dmg * 1.2);
+      }
+
       // Gadget: Power gloves damage multiplier
       if (atkEffects.damageMultiplier) {
         dmg = Math.round(dmg * atkEffects.damageMultiplier);
@@ -130,6 +148,10 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
       const currentDefHp = hpRef.current[target];
       const newDefHp = Math.max(0, currentDefHp - dmg);
 
+      if (isPlayer) {
+        setTotalDamageDealt((prev) => prev + dmg);
+      }
+
       // Gadget: Vampiric fangs lifesteal
       let healAmount = 0;
       if (atkEffects.lifestealPct && isPlayer) {
@@ -143,8 +165,8 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
       }
 
       // Visuals & SFX
-      setFx((f) => ({ flash: f.flash + 1, shake: f.shake + (isCrit ? 2 : 1) }));
-      if (isCrit) {
+      setFx((f) => ({ flash: f.flash + (isFrenzy ? 2 : 1), shake: f.shake + (isCrit || isFrenzy ? 2 : 1) }));
+      if (isCrit || isFrenzy) {
         sfx.crit();
       } else if (defEffects.defenseMultiplier && Math.random() < 0.5) {
         sfx.shield();
@@ -160,12 +182,16 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
         setBotShudder((s) => s + 1);
         setTimes((t) => [...t, performance.now() - revealAt.current]);
 
+        if (isFrenzy) {
+          addFloat("🔥 MEWING FRENZY!", "68%", "30%", "crit");
+        }
+
         // Floating texts for bot
         addFloat(
           `-${dmg}${isCrit ? " CRIT!" : ""}`,
           "70%",
           "38%",
-          isCrit ? "crit" : "damage"
+          isCrit || isFrenzy ? "crit" : "damage"
         );
 
         if (defEffects.defenseMultiplier) {
@@ -189,6 +215,10 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
         setBotPulse((p) => p + 1);
         setShudder((s) => s + 1);
 
+        if (isFrenzy) {
+          addFloat("🔥 BOT FRENZY!", "25%", "30%", "crit");
+        }
+
         addFloat(`-${dmg}`, "25%", "38%", "damage");
         if (pEffects.defenseMultiplier) {
           addFloat("🛡 SHIELDED", "25%", "30%", "block");
@@ -203,6 +233,12 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
         }
         return nextHp;
       });
+
+      // Update EX / Frenzy meter
+      setExMeter((prev) => ({
+        ...prev,
+        [attacker]: isFrenzy ? 0 : Math.min(100, prev[attacker] + 35),
+      }));
 
       // Check for K.O.
       if (newDefHp <= 0) {
@@ -344,6 +380,7 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
   const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0;
   const xpReward = won ? 60 + Math.round(30 - avg / 120) : 15;
   const coinsReward = won ? 150 + level * 4 : 40;
+  const isDanger = hp.p < 25 || hp.b < 25;
 
   const dust = useMemo(
     () =>
@@ -358,7 +395,9 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
 
   return (
     <div
-      className="relative flex h-[100dvh] flex-col overflow-hidden bg-letterbox select-none"
+      className={`relative flex h-[100dvh] flex-col overflow-hidden bg-letterbox select-none ${
+        isDanger ? "danger-overlay" : ""
+      }`}
       onClick={() => inputRef.current?.focus()}
     >
       {/* Letterbox Top */}
@@ -376,6 +415,7 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
 
         <div className="font-display text-center text-[0.6rem] text-muted-foreground md:text-xs">
           CLASH #{exchange} · LV {level}
+          {isDanger && <span className="text-destructive block text-[0.55rem] font-bold">⚠️ DANGER ZONE (+20% DMG)</span>}
         </div>
 
         <button
@@ -409,13 +449,14 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
           />
         ))}
 
-        {/* Street Fighter Style Fighting Healthbars */}
+        {/* Street Fighter Style Fighting Healthbars + EX Frenzy Gauges */}
         <div className="absolute inset-x-0 top-3 z-20 flex items-start justify-between px-3 md:px-12">
-          {/* Player HP */}
+          {/* Player HP & EX Meter */}
           <HealthPlate
             name="YOU"
             hp={hp.p}
             maxHp={MAX_HP}
+            exMeter={exMeter.p}
             right={false}
             gadgets={equippedGadgets}
           />
@@ -430,11 +471,12 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
             </span>
           </div>
 
-          {/* Bot HP */}
+          {/* Bot HP & EX Meter */}
           <HealthPlate
             name={bot.name}
             hp={hp.b}
             maxHp={MAX_HP}
+            exMeter={exMeter.b}
             right
             gadgets={bot.gadgets}
           />
@@ -466,7 +508,7 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
           <Fighter
             avatar={avatar}
             pose={playerPose}
-            intensity={0.3 + (1 - hp.p / MAX_HP) * 0.5}
+            intensity={0.3 + (1 - hp.p / MAX_HP) * 0.5 + (exMeter.p >= 100 ? 0.4 : 0)}
             pulse={pulse}
             shudder={shudder}
             className="h-[43vh] w-[43vh] max-w-[50vw] object-contain transition-transform duration-75"
@@ -474,7 +516,7 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
           <Fighter
             avatar={bot.avatar}
             pose={botPose}
-            intensity={0.3 + (1 - hp.b / MAX_HP) * 0.5}
+            intensity={0.3 + (1 - hp.b / MAX_HP) * 0.5 + (exMeter.b >= 100 ? 0.4 : 0)}
             pulse={botPulse}
             shudder={botShudder}
             mirror
@@ -557,7 +599,7 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
             <p className="font-display text-xs text-destructive">PENALTY...</p>
           )}
 
-          {/* K.O. Match End Results */}
+          {/* K.O. Match End Results & Mog Finisher */}
           {phase === "matchEnd" && (
             <div className="pop flex flex-col items-center gap-3 border-4 border-letterbox bg-card p-6 shadow-pixel max-w-md">
               <p
@@ -565,14 +607,14 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
                   won ? "text-accent" : "text-destructive"
                 }`}
               >
-                {won ? "K.O.! VICTORY" : "K.O.! DEFEATED"}
+                {won ? "MOGGED TO OBLIVION" : "DEFEATED"}
               </p>
               <div className="flex items-center gap-4 text-xl">
                 <span className="text-accent font-display text-sm">+{coinsReward} 🪙 Coins</span>
                 <span className="text-white font-display text-sm">+{xpReward} XP</span>
               </div>
               <p className="text-muted-foreground text-sm">
-                Fastest strike: {avg ? `${(avg / 1000).toFixed(2)}s` : "--"}
+                Fastest strike: {avg ? `${(avg / 1000).toFixed(2)}s` : "--"} · Total Dmg: {totalDamageDealt}
               </p>
 
               <div className="flex flex-wrap justify-center gap-3 mt-2">
@@ -581,12 +623,23 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
                   onClick={(e) => {
                     e.stopPropagation();
                     setHp({ p: MAX_HP, b: MAX_HP });
+                    setExMeter({ p: 0, b: 0 });
                     setExchange(1);
                     setTimes([]);
+                    setTotalDamageDealt(0);
                     startExchange(1);
                   }}
                 >
                   Rematch
+                </button>
+                <button
+                  className="btn-pixel text-xs bg-accent text-accent-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMogCard(true);
+                  }}
+                >
+                  📸 Export Mog Card
                 </button>
                 <button
                   className="btn-pixel text-xs"
@@ -634,27 +687,42 @@ export function Duel({ avatar, level, equippedGadgets = [], onExit, onReward }: 
           aria-label="Type the word"
         />
       </div>
+
+      {/* Export Mog Card Modal */}
+      {showMogCard && (
+        <MogCardModal
+          avatar={avatar}
+          level={level}
+          avgTimeMs={avg}
+          damageDealt={totalDamageDealt}
+          won={won}
+          onClose={() => setShowMogCard(false)}
+        />
+      )}
     </div>
   );
 }
 
-/** Street Fighter Style Health Bar Plate */
+/** Street Fighter Style Health Bar & EX Frenzy Gauge */
 function HealthPlate({
   name,
   hp,
   maxHp,
+  exMeter,
   right,
   gadgets = [],
 }: {
   name: string;
   hp: number;
   maxHp: number;
+  exMeter: number;
   right: boolean;
   gadgets: GadgetId[];
 }) {
   const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
   const hpColor =
     pct > 50 ? "bg-success" : pct > 25 ? "bg-accent" : "bg-destructive";
+  const isFrenzy = exMeter >= 100;
 
   return (
     <div
@@ -684,6 +752,21 @@ function HealthPlate({
           className={`h-full ${hpColor} hp-bar-transition ${right ? "ml-auto" : ""}`}
           style={{ width: `${pct}%` }}
         />
+      </div>
+
+      {/* EX / Mewing Frenzy Meter */}
+      <div className="w-full flex items-center gap-1 mt-0.5">
+        <span className="text-[0.5rem] font-display text-muted-foreground">
+          {isFrenzy ? "🔥 FRENZY" : "EX"}
+        </span>
+        <div className="relative h-1.5 flex-1 bg-muted border border-letterbox overflow-hidden">
+          <div
+            className={`h-full transition-all duration-150 ${
+              isFrenzy ? "bg-accent blink" : "bg-cyan-400"
+            }`}
+            style={{ width: `${exMeter}%` }}
+          />
+        </div>
       </div>
 
       {/* Equipped Gadgets Badges */}

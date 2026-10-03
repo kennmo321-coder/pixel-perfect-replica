@@ -1,5 +1,5 @@
 // Pixel avatar: stored as a tiny JSON of part ids, drawn procedurally onto a 48x48 grid.
-export type Archetype = "elder" | "clerk" | "psycho" | "gymbro";
+export type Archetype = "elder" | "clerk" | "psycho" | "gymbro" | "cryptobro" | "monk";
 export type AvatarData = {
   archetype: Archetype;
   skin: number;
@@ -14,6 +14,8 @@ export const ARCHETYPES: { id: Archetype; name: string; blurb: string }[] = [
   { id: "clerk", name: "Sigma Tentacle Clerk", blurb: "Deadpan. Unimpressed." },
   { id: "psycho", name: "The Suit Psycho", blurb: "Lets see your card." },
   { id: "gymbro", name: "Gym Bro", blurb: "Never skips jaw day." },
+  { id: "cryptobro", name: "The Crypto Mogger", blurb: "Diamond hands. Diamond jaw." },
+  { id: "monk", name: "Ancient Shadow Monk", blurb: "Transcendental void mewing." },
 ];
 
 export const SKINS = ["#7cc46a", "#8ec9c0", "#f1c7a3", "#d39a6a", "#8d5a3b", "#5a3a28"];
@@ -27,6 +29,8 @@ export const AURAS = [
   { name: "Blood Red", color: "#ff3b3b" },
   { name: "Gold", color: "#ffd23f" },
   { name: "Sunset", color: "#ff8a2a" },
+  { name: "Void Violet", color: "#a855f7" },
+  { name: "Hyper Blue", color: "#3b82f6" },
 ];
 
 export const PRESETS: Record<Archetype, AvatarData> = {
@@ -34,6 +38,8 @@ export const PRESETS: Record<Archetype, AvatarData> = {
   clerk: { archetype: "clerk", skin: 1, hair: 0, eyes: 1, acc: 0, aura: 1 },
   psycho: { archetype: "psycho", skin: 2, hair: 1, eyes: 2, acc: 0, aura: 2 },
   gymbro: { archetype: "gymbro", skin: 3, hair: 3, eyes: 0, acc: 4, aura: 3 },
+  cryptobro: { archetype: "cryptobro", skin: 2, hair: 1, eyes: 0, acc: 1, aura: 3 },
+  monk: { archetype: "monk", skin: 4, hair: 0, eyes: 1, acc: 2, aura: 5 },
 };
 
 export function randomAvatar(): AvatarData {
@@ -61,6 +67,8 @@ export function drawAvatar(c: CanvasRenderingContext2D, a: AvatarData, ox: numbe
     clerk: () => { p(10, 39, 28, 9, "#a9744a"); p(22, 39, 4, 2, "#c43030"); p(23, 41, 2, 5, "#c43030"); },
     psycho: () => { p(6, 38, 36, 10, "#3b3f4a"); p(19, 38, 10, 10, "#f4f4f0"); p(23, 39, 2, 9, "#b0151d"); p(19, 38, 3, 6, "#2a2d36"); p(26, 38, 3, 6, "#2a2d36"); },
     gymbro: () => { p(8, 39, 32, 9, skin); p(16, 39, 16, 9, "#2a2a2a"); p(14, 41, 2, 7, shade); p(32, 41, 2, 7, shade); },
+    cryptobro: () => { p(6, 38, 36, 10, "#111827"); p(18, 38, 12, 10, "#059669"); p(21, 39, 6, 2, "#ffd23f"); },
+    monk: () => { p(4, 38, 40, 10, "#1f1d2b"); p(16, 38, 16, 10, "#4c1d95"); p(18, 40, 12, 3, "#7c3aed"); },
   };
   cloth[a.archetype]();
 
